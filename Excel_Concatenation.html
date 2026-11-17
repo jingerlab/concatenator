@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Column Processor</title>
+    <!-- SheetJS for reading and writing Excel files in the browser -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        /* Dark theme: Grey typography, Red headings, Card layouts */
+        body {
+            background-color: #121212;
+            color: #d4d4d4;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        h1, h2, h3, h4 {
+            color: #ff4c4c;
+            margin-top: 0;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        select, input[type="text"], input[type="file"] {
+            background-color: #2d2d2d;
+            color: #d4d4d4;
+            border: 1px solid #444;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #ff4c4c;
+        }
+        button {
+            background-color: #ff4c4c;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #d43f3f;
+        }
+        .btn-download {
+            background-color: #2ea043;
+            margin-left: 10px;
+        }
+        .btn-download:hover {
+            background-color: #238636;
+        }
+        .row-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .item-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .config-row {
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .remove-btn {
+            color: #ff4c4c;
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: auto;
+            padding: 0 10px;
+        }
+        .remove-btn:hover {
+            color: #ff8888;
+        }
+        .concat-group {
+            background-color: #252526;
+            border: 1px dashed #555;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+            max-height: 500px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        th, td {
+            border: 1px solid #444;
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #252526;
+            color: #ff4c4c;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .hint {
+            font-size: 0.9em;
+            color: #888;
+            margin-bottom: 15px;
+        }
+        .label-badge {
+            background-color: #444;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: #aaa;
+        }
+        #sheetSelection {
+            background-color: #252526;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            border: 1px solid #444;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Data Extraction & Consolidation</h1>
+
+    <!-- 1. File Upload Card -->
+    <div class="card">
+        <h2>1. Load Excel File</h2>
+        <input type="file" id="fileInput" accept=".xlsx, .xls, .csv">
+        <span id="fileStatus" style="margin-left: 15px; color: #888;">No file loaded yet.</span>
+        
+        <!-- Sheet Selection Dropdown -->
+        <div id="sheetSelection" class="row-controls" style="margin-bottom: 0;">
+            <strong>Select WorkSheet:</strong>
+            <select id="sheetSelect" onchange="changeSheet()"></select>
+        </div>
+    </div>
+
+    <!-- 2. Single Column Sequence Card -->
+    <div class="card">
+        <h2>2. Method 1: Select Single Columns</h2>
+        <p class="hint">Add columns and optionally rename them for the final output.</p>
+        <div class="row-controls">
+            <select id="singleColSelect">
+                <option value="">-- Select a column --</option>
+            </select>
+            <button onclick="addSingleColumn()">Add Column</button>
+        </div>
+        <div class="item-list" id="singleColList"></div>
+    </div>
+
+    <!-- 3. Concatenation Card -->
+    <div class="card">
+        <h2>3. Method 2: Concatenate Multiple Columns</h2>
+        <p class="hint">Merge multiple columns into one. You can edit the text format/prefix that appears before each value.</p>
+        <button onclick="addConcatGroup()" style="margin-bottom: 15px;">+ Create New Merged Column</button>
+        
+        <div id="concatGroupsContainer"></div>
+    </div>
+
+    <!-- 4. Output / Preview Card -->
+    <div class="card">
+        <h2>4. Preview & Export</h2>
+        <div class="row-controls" style="margin-bottom: 15px;">
+            <button onclick="generatePreview()">Generate Preview</button>
+            <button onclick="exportToExcel()" class="btn-download">⬇ Download Excel</button>
+        </div>
+        <div class="table-container">
+            <div id="resultTable"><i>Table preview will appear here...</i></div>
+        </div>
+    </div>
+
+    <script>
+        // Global State
+        let currentWorkbook = null;
+        let currentSheetName = "";
+        let rawData = [];
+        let headers = [];
+        
+        // sequenceColumns format: { id: number, colName: string, newName: string }
+        let sequenceColumns = []; 
+        let singleColIdCounter = 0;
+
+        // concatGroups format: { id: number, newName: string, selectedCols: [ { id: number, colName: string, prefix: string } ] }
+        let concatGroups = [];
+        let concatGroupIdCounter = 0;
+        let concatItemCounter = 0;
+
+        // --- File Handling ---
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('fileStatus').innerText = "Reading file...";
+            document.getElementById('sheetSelection').style.display = "none";
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    currentWorkbook = XLSX.read(data, {type: 'array'});
+                    
+                    // Populate sheet dropdown
+                    const sheetSelect = document.getElementById('sheetSelect');
+                    sheetSelect.innerHTML = '';
+                    currentWorkbook.SheetNames.forEach(name => {
+                        const opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = name;
+                        sheetSelect.appendChild(opt);
+                    });
+                    
+                    document.getElementById('sheetSelection').style.display = "flex";
+                    
+                    // Load the first sheet by default
+                    changeSheet(currentWorkbook.SheetNames[0]);
+                    
+                } catch (error) {
+                    document.getElementById('fileStatus').innerText = "Error reading file.";
+                    console.error(error);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // --- Sheet Changing Logic ---
+        function changeSheet(forceSheetName = null) {
+            currentSheetName = forceSheetName || document.getElementById('sheetSelect').value;
+            
+            // Set dropdown value if forced
+            if (forceSheetName) {
+                document.getElementById('sheetSelect').value = currentSheetName;
+            }
+
+            const worksheet = currentWorkbook.Sheets[currentSheetName];
+            
+            // Parse new sheet data
+            rawData = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+            const headerArray = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+            headers = headerArray.length > 0 ? headerArray[0] : [];
+            
+            document.getElementById('fileStatus').innerText = `Loaded "${document.getElementById('fileInput').files[0].name}" (Sheet: ${currentSheetName}, ${rawData.length} rows).`;
+            
+            // Reset existing configuration to avoid orphaned column references
+            sequenceColumns = [];
+            concatGroups = [];
+            renderSingleColumns();
+            renderConcatGroups();
+            document.getElementById('resultTable').innerHTML = '<i>Table preview will appear here...</i>';
+            
+            updateAllDropdowns();
+        }
+
+        function populateDropdown(selectElement) {
+            selectElement.innerHTML = '<option value="">-- Select a column --</option>';
+            headers.forEach(header => {
+                if(header !== undefined && header !== null && header.toString().trim() !== '') {
+                    const opt = document.createElement('option');
+                    opt.value = header;
+                    opt.textContent = header;
+                    selectElement.appendChild(opt);
+                }
+            });
+        }
+
+        function updateAllDropdowns() {
+            populateDropdown(document.getElementById('singleColSelect'));
+            document.querySelectorAll('.concat-dropdown').forEach(select => populateDropdown(select));
+        }
+
+        // --- Method 1: Single Sequence Logic ---
+        function addSingleColumn() {
+            const select = document.getElementById('singleColSelect');
+            const val = select.value;
+            if (val) {
+                sequenceColumns.push({
+                    id: singleColIdCounter++,
+                    colName: val,
+                    newName: val
+                });
+                renderSingleColumns();
+            }
+            select.value = ""; 
+        }
+
+        function removeSingleColumn(id) {
+            sequenceColumns = sequenceColumns.filter(c => c.id !== id);
+            renderSingleColumns();
+        }
+
+        function updateSingleColumnName(id, newName) {
+            const col = sequenceColumns.find(c => c.id === id);
+            if (col) col.newName = newName;
+        }
+
+        function renderSingleColumns() {
+            const container = document.getElementById('singleColList');
+            container.innerHTML = '';
+            sequenceColumns.forEach(col => {
+                const row = document.createElement('div');
+                row.className = 'config-row';
+                row.innerHTML = `
+                    <span class="label-badge">Source: ${col.colName}</span>
+                    <span>➔</span>
+                    <input type="text" value="${col.newName}" placeholder="Rename column" 
+                           onchange="updateSingleColumnName(${col.id}, this.value)">
+                    <span class="remove-btn" onclick="removeSingleColumn(${col.id})">✕ Remove</span>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        // --- Method 2: Concatenation Logic ---
+        function addConcatGroup() {
+            concatGroups.push({
+                id: concatGroupIdCounter++,
+                newName: `Merged_Column_${concatGroups.length + 1}`,
+                selectedCols: []
+            });
+            renderConcatGroups();
+        }
+
+        function removeConcatGroup(id) {
+            concatGroups = concatGroups.filter(g => g.id !== id);
+            renderConcatGroups();
+        }
+
+        function addColToConcatGroup(groupId) {
+            const select = document.getElementById(`concat-select-${groupId}`);
+            const val = select.value;
+            const group = concatGroups.find(g => g.id === groupId);
+            
+            if (val && group) {
+                group.selectedCols.push({
+                    id: concatItemCounter++,
+                    colName: val,
+                    prefix: `${val} = `
+                });
+                renderConcatGroups();
+            }
+        }
+
+        function removeColFromConcatGroup(groupId, itemId) {
+            const group = concatGroups.find(g => g.id === groupId);
+            if (group) {
+                group.selectedCols = group.selectedCols.filter(c => c.id !== itemId);
+                renderConcatGroups();
+            }
+        }
+
+        function updateConcatGroupName(id, newName) {
+            const group = concatGroups.find(g => g.id === id);
+            if (group) group.newName = newName;
+        }
+
+        function updateConcatItemPrefix(groupId, itemId, newPrefix) {
+            const group = concatGroups.find(g => g.id === groupId);
+            if (group) {
+                const item = group.selectedCols.find(c => c.id === itemId);
+                if (item) item.prefix = newPrefix;
+            }
+        }
+
+        function renderConcatGroups() {
+            const container = document.getElementById('concatGroupsContainer');
+            container.innerHTML = '';
+
+            concatGroups.forEach(group => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'concat-group';
+                
+                // Group Header
+                const headerHtml = `
+                    <div class="row-controls" style="border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 15px;">
+                        <strong>Final Column Name:</strong>
+                        <input type="text" value="${group.newName}" placeholder="Enter merged column name" 
+                               onchange="updateConcatGroupName(${group.id}, this.value)" style="flex-grow: 1;">
+                        <button onclick="removeConcatGroup(${group.id})" style="background-color: #333; border: 1px solid #555;">Delete Merge</button>
+                    </div>
+                `;
+
+                // Add to Merge row
+                const selectHtml = `
+                    <div class="row-controls">
+                        <select id="concat-select-${group.id}" class="concat-dropdown">
+                            <option value="">-- Add a column to this merge --</option>
+                            ${headers.map(h => h.toString().trim() !== '' ? `<option value="${h}">${h}</option>` : '').join('')}
+                        </select>
+                        <button onclick="addColToConcatGroup(${group.id})">Add to Merge</button>
+                    </div>
+                `;
+
+                // Configurable Sub-items list
+                const itemsHtml = document.createElement('div');
+                itemsHtml.className = 'item-list';
+                
+                group.selectedCols.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'config-row';
+                    row.innerHTML = `
+                        <span class="label-badge">Source: ${item.colName}</span>
+                        <span>Format text:</span>
+                        <input type="text" value="${item.prefix}" placeholder="Text before value" 
+                               onchange="updateConcatItemPrefix(${group.id}, ${item.id}, this.value)" style="width: 200px;">
+                        <span style="color: #888; font-style: italic;"> + [Value]</span>
+                        <span class="remove-btn" onclick="removeColFromConcatGroup(${group.id}, ${item.id})">✕ Remove</span>
+                    `;
+                    itemsHtml.appendChild(row);
+                });
+
+                groupDiv.innerHTML = headerHtml + selectHtml;
+                groupDiv.appendChild(itemsHtml);
+                container.appendChild(groupDiv);
+            });
+        }
+
+        // --- Data Processing Logic ---
+        function getProcessedDataArray() {
+            if (rawData.length === 0 || (sequenceColumns.length === 0 && concatGroups.length === 0)) {
+                return null;
+            }
+
+            const processedData = [];
+            
+            for (let i = 0; i < rawData.length; i++) {
+                const row = rawData[i];
+                const newRow = {};
+
+                // 1. Single Columns
+                sequenceColumns.forEach(col => {
+                    const finalName = col.newName.trim() || col.colName;
+                    newRow[finalName] = row[col.colName] !== undefined ? row[col.colName] : '';
+                });
+
+                // 2. Concatenated Columns
+                concatGroups.forEach(group => {
+                    const mergedValue = group.selectedCols
+                        .map(item => {
+                            const val = row[item.colName] !== undefined ? String(row[item.colName]).trim() : '';
+                            if (val === '') return ''; // Skip empty values
+                            return `${item.prefix}${val}`;
+                        })
+                        .filter(str => str !== '')
+                        .join(', '); // Join individual formatted columns with a comma
+                    
+                    const finalColName = group.newName.trim() || 'Unnamed_Column';
+                    newRow[finalColName] = mergedValue;
+                });
+
+                processedData.push(newRow);
+            }
+            return processedData;
+        }
+
+        // --- Output Generation ---
+        function generatePreview() {
+            const data = getProcessedDataArray();
+            if (!data) {
+                alert("Please select/merge at least one column.");
+                return;
+            }
+
+            let html = '<table><thead><tr>';
+            Object.keys(data[0]).forEach(key => { html += `<th>${key}</th>`; });
+            html += '</tr></thead><tbody>';
+
+            const rowLimit = Math.min(data.length, 100); 
+            for (let i = 0; i < rowLimit; i++) {
+                html += '<tr>';
+                Object.values(data[i]).forEach(val => { html += `<td>${val}</td>`; });
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+
+            if (data.length > 100) {
+                html += `<div class="hint" style="margin-top:10px;">Showing first 100 rows. Use Download Excel to get all ${data.length} rows.</div>`;
+            }
+
+            document.getElementById('resultTable').innerHTML = html;
+        }
+
+        // --- Export to Excel ---
+        function exportToExcel() {
+            const data = getProcessedDataArray();
+            if (!data) {
+                alert("Nothing to export. Please configure columns.");
+                return;
+            }
+            
+            const worksheet = XLSX.utils.json_to_sheet(data);
+            const workbook = XLSX.utils.book_new();
+            
+            // Clean sheet name to avoid invalid characters for Excel tabs
+            let safeSheetName = currentSheetName.substring(0, 31).replace(/[\\/*?:\[\]]/g, '');
+            if (!safeSheetName) safeSheetName = "Consolidated_Data";
+
+            XLSX.utils.book_append_sheet(workbook, worksheet, safeSheetName);
+            XLSX.writeFile(workbook, "Processed_Consolidated_Marksheet.xlsx");
+        }
+    </script>
+</body>
+</html>
